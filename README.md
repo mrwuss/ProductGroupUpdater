@@ -87,8 +87,9 @@ Content-Type: application/json
 | Code | Meaning | When |
 |------|---------|------|
 | 200 | Success | Update completed successfully |
-| 400 | Bad Request | Item not found, no locations, invalid input |
+| 400 | Bad Request | Item not found, no locations |
 | 409 | Conflict | Expected product group doesn't match actual (concurrency) |
+| 422 | Validation Error | Missing or invalid fields in request |
 | 500 | Server Error | Update failed (P21 error, record locked, etc.) |
 
 ### Example: Success (200)
@@ -111,6 +112,17 @@ Expected product group doesn't match - someone else changed it:
 {
   "error": "Concurrency conflict",
   "detail": "Expected 'SU5S' but found 'SU5B'"
+}
+```
+
+### Example: Validation Error (422)
+
+Missing or invalid request fields:
+
+```json
+{
+  "error": "Validation error",
+  "detail": "Missing required fields: inv_mast_uid, expected_product_group_id, desired_product_group_id"
 }
 ```
 
@@ -144,6 +156,7 @@ See `data/` folder for example payloads:
 - `example-response-200-success.json` - Success response
 - `example-response-400-bad-request.json` - Bad request
 - `example-response-409-concurrency.json` - Concurrency conflict
+- `example-response-422-validation-error.json` - Validation error
 - `example-response-500-server-error.json` - Server error
 
 ## Testing with curl

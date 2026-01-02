@@ -1,0 +1,4 @@
+{
+  "error": "Validation error",
+  "detail": "Missing required fields: inv_mast_uid, expected_product_group_id, desired_product_group_id"
+}

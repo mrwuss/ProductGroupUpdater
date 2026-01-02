@@ -3,11 +3,14 @@
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from product_group_changer.api.routes import health, product_groups
 from product_group_changer.config import get_settings
 from product_group_changer.dependencies import AppState
+from product_group_changer.models.schemas import ErrorResponse
 
 
 @asynccontextmanager
@@ -36,6 +39,25 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
         debug=settings.debug,
     )
+
+    # Custom validation error handler (422 -> consistent format)
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        errors = exc.errors()
+        missing_fields = [e["loc"][-1] for e in errors if e["type"] == "missing"]
+        
+        if missing_fields:
+            detail = f"Missing required fields: {', '.join(missing_fields)}"
+        else:
+            detail = "; ".join([f"{e['loc'][-1]}: {e['msg']}" for e in errors])
+        
+        return JSONResponse(
+            status_code=422,
+            content=ErrorResponse(
+                error="Validation error",
+                detail=detail,
+            ).model_dump(),
+        )
 
     # Include routers
     app.include_router(health.router, tags=["Health"])

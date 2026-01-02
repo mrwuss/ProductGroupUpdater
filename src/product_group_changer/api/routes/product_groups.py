@@ -24,6 +24,7 @@ router = APIRouter()
         200: {"model": SuccessResponse, "description": "Update successful"},
         400: {"model": ErrorResponse, "description": "Bad request"},
         409: {"model": ErrorResponse, "description": "Concurrency conflict"},
+        422: {"model": ErrorResponse, "description": "Validation error"},
         500: {"model": ErrorResponse, "description": "Server error"},
     },
 )
@@ -36,8 +37,9 @@ async def change_product_group(
 
     Response codes:
     - 200: Update successful
-    - 400: Bad request (invalid input, item not found)
+    - 400: Bad request (item not found, no locations)
     - 409: Concurrency conflict (expected product group doesn't match actual)
+    - 422: Validation error (missing or invalid fields)
     - 500: Server error (update failed)
     """
     service = ProductGroupService(odata=odata, client=client)
