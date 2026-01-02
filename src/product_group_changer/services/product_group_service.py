@@ -100,7 +100,7 @@ class ProductGroupService:
         # Check each location - ALL must match
         for loc in locations:
             actual_pg = loc.get("product_group_id", "")
-            if actual_pg \!= expected_product_group_id:
+            if actual_pg != expected_product_group_id:
                 return ValidationResult(
                     valid=False,
                     inv_mast_uid=inv_mast_uid,
