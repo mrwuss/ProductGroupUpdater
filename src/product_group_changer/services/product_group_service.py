@@ -6,31 +6,32 @@ from typing import Any
 
 from product_group_changer.integrations.p21.odata import P21OData
 from product_group_changer.integrations.p21.client import P21Client
-from product_group_changer.models.schemas import ItemChange
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class MismatchInfo:
-    """Information about a product group mismatch."""
+class ValidationResult:
+    """Result of validating an item's product group assertion."""
 
+    valid: bool
     inv_mast_uid: int
-    expected_product_group_id: str
-    actual_product_group_id: str
     item_id: str | None = None
-    location_id: int | None = None
+    expected_product_group_id: str = ""
+    actual_product_group_id: str | None = None
+    locations: list[dict[str, Any]] | None = None
+    error: str | None = None
 
 
 @dataclass
 class ChangeResult:
-    """Result of a single item change."""
+    """Result of changing product group."""
 
+    success: bool
     inv_mast_uid: int
     item_id: str
     previous_product_group_id: str
     new_product_group_id: str
-    success: bool
     locations_changed: list[int]
     error: str | None = None
 
@@ -56,176 +57,125 @@ class ProductGroupService:
         return results[0] if results else None
 
     async def get_item_locations(self, inv_mast_uid: int) -> list[dict[str, Any]]:
-        """Get all location records for an item from inv_loc.
-
-        Product group is stored at the location level, not master level.
-        """
+        """Get all location records for an item from inv_loc."""
         return await self.odata.query(
             table="inv_loc",
             filter_expr=f"inv_mast_uid eq {inv_mast_uid}",
         )
 
-    async def validate_assertions(
+    async def validate_assertion(
         self,
-        items: list[ItemChange],
-    ) -> tuple[list[dict[str, Any]], list[MismatchInfo]]:
-        """Validate that all items match their asserted product groups.
+        inv_mast_uid: int,
+        expected_product_group_id: str,
+    ) -> ValidationResult:
+        """Validate that item matches asserted product group at ALL locations.
 
-        Checks ALL locations for each item - all must have the expected product group.
-
-        Args:
-            items: List of item assertions to validate
-
-        Returns:
-            Tuple of (valid_items, mismatches)
+        Returns ValidationResult with:
+        - valid=True and locations if assertion matches
+        - valid=False with error details if mismatch or item not found
         """
-        valid_items: list[dict[str, Any]] = []
-        mismatches: list[MismatchInfo] = []
+        # Get master record
+        item = await self.get_item_by_uid(inv_mast_uid)
+        if item is None:
+            return ValidationResult(
+                valid=False,
+                inv_mast_uid=inv_mast_uid,
+                expected_product_group_id=expected_product_group_id,
+                error="Item not found",
+            )
 
-        for item_change in items:
-            # Get master record for item_id
-            item = await self.get_item_by_uid(item_change.inv_mast_uid)
+        item_id = item.get("item_id", "")
 
-            if item is None:
-                mismatches.append(
-                    MismatchInfo(
-                        inv_mast_uid=item_change.inv_mast_uid,
-                        expected_product_group_id=item_change.expected_product_group_id,
-                        actual_product_group_id="ITEM_NOT_FOUND",
-                        item_id=None,
-                    )
+        # Get all locations
+        locations = await self.get_item_locations(inv_mast_uid)
+        if not locations:
+            return ValidationResult(
+                valid=False,
+                inv_mast_uid=inv_mast_uid,
+                item_id=item_id,
+                expected_product_group_id=expected_product_group_id,
+                error="Item has no locations",
+            )
+
+        # Check each location - ALL must match
+        for loc in locations:
+            actual_pg = loc.get("product_group_id", "")
+            if actual_pg \!= expected_product_group_id:
+                return ValidationResult(
+                    valid=False,
+                    inv_mast_uid=inv_mast_uid,
+                    item_id=item_id,
+                    expected_product_group_id=expected_product_group_id,
+                    actual_product_group_id=actual_pg,
+                    error=f"Product group mismatch at location {loc.get('location_id')}",
                 )
-                continue
 
-            # Get all locations for this item
-            locations = await self.get_item_locations(item_change.inv_mast_uid)
+        # All locations match
+        return ValidationResult(
+            valid=True,
+            inv_mast_uid=inv_mast_uid,
+            item_id=item_id,
+            expected_product_group_id=expected_product_group_id,
+            locations=locations,
+        )
 
-            if not locations:
-                mismatches.append(
-                    MismatchInfo(
-                        inv_mast_uid=item_change.inv_mast_uid,
-                        expected_product_group_id=item_change.expected_product_group_id,
-                        actual_product_group_id="NO_LOCATIONS",
-                        item_id=item.get("item_id"),
-                    )
-                )
-                continue
-
-            # Check each location - ALL must match the expected product group
-            location_mismatches = []
-            for loc in locations:
-                actual_pg = loc.get("product_group_id", "")
-                if actual_pg != item_change.expected_product_group_id:
-                    location_mismatches.append(
-                        MismatchInfo(
-                            inv_mast_uid=item_change.inv_mast_uid,
-                            expected_product_group_id=item_change.expected_product_group_id,
-                            actual_product_group_id=actual_pg,
-                            item_id=item.get("item_id"),
-                            location_id=loc.get("location_id"),
-                        )
-                    )
-
-            if location_mismatches:
-                mismatches.extend(location_mismatches)
-            else:
-                # All locations match - add to valid items
-                valid_items.append({
-                    "inv_mast_uid": item_change.inv_mast_uid,
-                    "item_id": item.get("item_id"),
-                    "item_desc": item.get("item_desc"),
-                    "expected_product_group_id": item_change.expected_product_group_id,
-                    "desired_product_group_id": item_change.desired_product_group_id,
-                    "locations": locations,
-                })
-
-        return valid_items, mismatches
-
-    async def change_product_groups(
+    async def change_product_group(
         self,
-        items: list[dict[str, Any]],
-    ) -> list[ChangeResult]:
-        """Change product groups for validated items at ALL locations.
+        inv_mast_uid: int,
+        item_id: str,
+        previous_product_group_id: str,
+        desired_product_group_id: str,
+        locations: list[dict[str, Any]],
+    ) -> ChangeResult:
+        """Change product group for item at ALL locations."""
+        if not self.client:
+            return ChangeResult(
+                success=False,
+                inv_mast_uid=inv_mast_uid,
+                item_id=item_id,
+                previous_product_group_id=previous_product_group_id,
+                new_product_group_id=desired_product_group_id,
+                locations_changed=[],
+                error="P21 client not available",
+            )
 
-        Each item has its own desired_product_group_id.
-        """
-        results: list[ChangeResult] = []
+        locations_changed: list[int] = []
+        errors: list[str] = []
 
-        for item in items:
-            inv_mast_uid = item["inv_mast_uid"]
-            item_id = item.get("item_id", "")
-            previous_group = item.get("expected_product_group_id", "")
-            desired_group = item.get("desired_product_group_id", "")
-            locations = item.get("locations", [])
-
+        for loc in locations:
+            location_id = loc.get("location_id")
             try:
-                if self.client:
-                    # Update each location using Interactive API
-                    locations_changed: list[int] = []
-                    errors: list[str] = []
-
-                    for loc in locations:
-                        location_id = loc.get("location_id")
-                        update_result = await self.client.update_inv_loc_product_group(
-                            inv_mast_uid=inv_mast_uid,
-                            location_id=location_id,
-                            new_product_group_id=desired_group,
-                            item_id=item_id,  # Pass item_id to avoid redundant lookup
-                        )
-
-                        if update_result.get("success"):
-                            locations_changed.append(location_id)
-                        else:
-                            errors.append(f"Location {location_id}: {update_result.get('message')}")
-
-                    if errors:
-                        results.append(
-                            ChangeResult(
-                                inv_mast_uid=inv_mast_uid,
-                                item_id=item_id,
-                                previous_product_group_id=previous_group,
-                                new_product_group_id=desired_group,
-                                success=False,
-                                locations_changed=locations_changed,
-                                error="; ".join(errors),
-                            )
-                        )
-                    else:
-                        results.append(
-                            ChangeResult(
-                                inv_mast_uid=inv_mast_uid,
-                                item_id=item_id,
-                                previous_product_group_id=previous_group,
-                                new_product_group_id=desired_group,
-                                success=True,
-                                locations_changed=locations_changed,
-                            )
-                        )
-                else:
-                    results.append(
-                        ChangeResult(
-                            inv_mast_uid=inv_mast_uid,
-                            item_id=item_id,
-                            previous_product_group_id=previous_group,
-                            new_product_group_id=desired_group,
-                            success=False,
-                            locations_changed=[],
-                            error="P21 client not available",
-                        )
-                    )
-
-            except Exception as e:
-                logger.error(f"Failed to update {item_id}: {e}")
-                results.append(
-                    ChangeResult(
-                        inv_mast_uid=inv_mast_uid,
-                        item_id=item_id,
-                        previous_product_group_id=previous_group,
-                        new_product_group_id=desired_group,
-                        success=False,
-                        locations_changed=[],
-                        error=str(e),
-                    )
+                update_result = await self.client.update_inv_loc_product_group(
+                    inv_mast_uid=inv_mast_uid,
+                    location_id=location_id,
+                    new_product_group_id=desired_product_group_id,
+                    item_id=item_id,
                 )
 
-        return results
+                if update_result.get("success"):
+                    locations_changed.append(location_id)
+                else:
+                    errors.append(f"Location {location_id}: {update_result.get('message')}")
+            except Exception as e:
+                logger.error(f"Failed to update location {location_id}: {e}")
+                errors.append(f"Location {location_id}: {str(e)}")
+
+        if errors:
+            return ChangeResult(
+                success=False,
+                inv_mast_uid=inv_mast_uid,
+                item_id=item_id,
+                previous_product_group_id=previous_product_group_id,
+                new_product_group_id=desired_product_group_id,
+                locations_changed=locations_changed,
+                error="; ".join(errors),
+            )
+
+        return ChangeResult(
+            success=True,
+            inv_mast_uid=inv_mast_uid,
+            item_id=item_id,
+            previous_product_group_id=previous_product_group_id,
+            new_product_group_id=desired_product_group_id,
+            locations_changed=locations_changed,
+        )

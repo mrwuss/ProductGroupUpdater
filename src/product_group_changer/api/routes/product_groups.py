@@ -1,6 +1,7 @@
 """Product group change endpoint."""
 
-from fastapi import APIRouter, Depends, HTTPException
+import logging
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
 from product_group_changer.dependencies import get_p21_odata, get_p21_client
@@ -8,23 +9,22 @@ from product_group_changer.integrations.p21.odata import P21OData
 from product_group_changer.integrations.p21.client import P21Client
 from product_group_changer.models.schemas import (
     ChangeProductGroupRequest,
-    ChangeResultItem,
-    ChangeSuccessResponse,
-    ChangePartialFailureResponse,
-    MismatchDetail,
-    ValidationErrorResponse,
+    SuccessResponse,
+    ErrorResponse,
 )
 from product_group_changer.services.product_group_service import ProductGroupService
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
 @router.post(
     "/change-product-group",
     responses={
-        200: {"model": ChangeSuccessResponse, "description": "All changes succeeded"},
-        400: {"model": ValidationErrorResponse, "description": "Product group assertion mismatch"},
-        403: {"model": ChangePartialFailureResponse, "description": "Some changes failed"},
+        200: {"model": SuccessResponse, "description": "Update successful"},
+        400: {"model": ErrorResponse, "description": "Bad request"},
+        409: {"model": ErrorResponse, "description": "Concurrency conflict"},
+        500: {"model": ErrorResponse, "description": "Server error"},
     },
 )
 async def change_product_group(
@@ -32,77 +32,81 @@ async def change_product_group(
     odata: P21OData = Depends(get_p21_odata),
     client: P21Client = Depends(get_p21_client),
 ) -> JSONResponse:
-    """Change product groups for inventory items.
+    """Change product group for an inventory item.
 
-    Workflow:
-    1. Validate all items match their asserted current product groups
-    2. If any mismatch → return 400 with mismatch details
-    3. Update all items to the new product group
-    4. If all succeed → return 200 with results
-    5. If any fail → return 403 with individual results
-
-    Request body:
-    - items: Array of {inv_mast_uid, expected_product_group_id} pairs
-    - new_product_group_id: Target product group for all items
+    Response codes:
+    - 200: Update successful
+    - 400: Bad request (invalid input, item not found)
+    - 409: Concurrency conflict (expected product group doesn't match actual)
+    - 500: Server error (update failed)
     """
     service = ProductGroupService(odata=odata, client=client)
 
-    # Phase 1: Validate assertions
-    valid_items, mismatches = await service.validate_assertions(request.items)
+    try:
+        # Validate assertion (optimistic lock check)
+        validation = await service.validate_assertion(
+            inv_mast_uid=request.inv_mast_uid,
+            expected_product_group_id=request.expected_product_group_id,
+        )
 
-    if mismatches:
-        # Return 400 - assertions don't match current state
-        response = ValidationErrorResponse(
-            error="Product group mismatch",
-            mismatches=[
-                MismatchDetail(
-                    inv_mast_uid=m.inv_mast_uid,
-                    expected_product_group_id=m.expected_product_group_id,
-                    actual_product_group_id=m.actual_product_group_id,
-                    item_id=m.item_id,
-                    location_id=m.location_id,
+        if not validation.valid:
+            # Determine if 400 (bad request) or 409 (concurrency)
+            if validation.actual_product_group_id is not None:
+                # Mismatch = concurrency conflict
+                return JSONResponse(
+                    status_code=409,
+                    content=ErrorResponse(
+                        error="Concurrency conflict",
+                        detail=f"Expected '{request.expected_product_group_id}' but found '{validation.actual_product_group_id}'",
+                    ).model_dump(),
                 )
-                for m in mismatches
-            ],
+            else:
+                # Item not found or no locations = bad request
+                return JSONResponse(
+                    status_code=400,
+                    content=ErrorResponse(
+                        error="Bad request",
+                        detail=validation.error,
+                    ).model_dump(),
+                )
+
+        # Execute the change
+        result = await service.change_product_group(
+            inv_mast_uid=request.inv_mast_uid,
+            item_id=validation.item_id or "",
+            previous_product_group_id=request.expected_product_group_id,
+            desired_product_group_id=request.desired_product_group_id,
+            locations=validation.locations or [],
         )
-        return JSONResponse(status_code=400, content=response.model_dump())
 
-    # Phase 2: Execute changes
-    results = await service.change_product_groups(
-        items=valid_items,
-    )
+        if not result.success:
+            # Update failed = server error
+            return JSONResponse(
+                status_code=500,
+                content=ErrorResponse(
+                    error="Update failed",
+                    detail=result.error,
+                ).model_dump(),
+            )
 
-    # Convert to response format
-    result_items = [
-        ChangeResultItem(
-            inv_mast_uid=r.inv_mast_uid,
-            item_id=r.item_id,
-            previous_product_group_id=r.previous_product_group_id,
-            new_product_group_id=r.new_product_group_id,
-            success=r.success,
-            locations_changed=r.locations_changed,
-            error=r.error,
+        # Success
+        return JSONResponse(
+            status_code=200,
+            content=SuccessResponse(
+                inv_mast_uid=result.inv_mast_uid,
+                item_id=result.item_id,
+                previous_product_group_id=result.previous_product_group_id,
+                new_product_group_id=result.new_product_group_id,
+                locations_changed=result.locations_changed,
+            ).model_dump(),
         )
-        for r in results
-    ]
 
-    # Check for failures
-    failures = [r for r in results if not r.success]
-
-    if failures:
-        # Return 403 - some updates failed
-        response = ChangePartialFailureResponse(
-            error="Some updates failed",
-            total_requested=len(results),
-            successful=len(results) - len(failures),
-            failed=len(failures),
-            results=result_items,
+    except Exception as e:
+        logger.exception(f"Unexpected error: {e}")
+        return JSONResponse(
+            status_code=500,
+            content=ErrorResponse(
+                error="Server error",
+                detail=str(e),
+            ).model_dump(),
         )
-        return JSONResponse(status_code=403, content=response.model_dump())
-
-    # Return 200 - all succeeded
-    response = ChangeSuccessResponse(
-        total_changed=len(results),
-        results=result_items,
-    )
-    return JSONResponse(status_code=200, content=response.model_dump())

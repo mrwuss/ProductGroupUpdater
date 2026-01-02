@@ -1,95 +1,14 @@
 {
-  "total_changed": 10,
-  "results": [
-    {
-      "inv_mast_uid": 35923,
-      "item_id": "GBY",
-      "previous_product_group_id": "SU5S",
-      "new_product_group_id": "SU5B",
-      "success": true,
-      "locations_changed": [10, 19, 20, 30, 40, 50],
-      "error": null
-    },
-    {
-      "inv_mast_uid": 41502,
-      "item_id": "FLT-HYD-100",
-      "previous_product_group_id": "SU5S",
-      "new_product_group_id": "SU5B",
-      "success": true,
-      "locations_changed": [10, 20],
-      "error": null
-    },
-    {
-      "inv_mast_uid": 28741,
-      "item_id": "HYD-PUMP-4500",
-      "previous_product_group_id": "HY3A",
-      "new_product_group_id": "HY3B",
-      "success": true,
-      "locations_changed": [10, 20, 30, 40],
-      "error": null
-    },
-    {
-      "inv_mast_uid": 19384,
-      "item_id": "HYD-MOTOR-200",
-      "previous_product_group_id": "HY3A",
-      "new_product_group_id": "HY3B",
-      "success": true,
-      "locations_changed": [10, 20, 30],
-      "error": null
-    },
-    {
-      "inv_mast_uid": 52109,
-      "item_id": "PNEU-CYL-250",
-      "previous_product_group_id": "PN2B",
-      "new_product_group_id": "PN2C",
-      "success": true,
-      "locations_changed": [10, 19, 20, 30],
-      "error": null
-    },
-    {
-      "inv_mast_uid": 33847,
-      "item_id": "PNEU-VLV-50",
-      "previous_product_group_id": "PN2B",
-      "new_product_group_id": "PN2C",
-      "success": true,
-      "locations_changed": [10, 20],
-      "error": null
-    },
-    {
-      "inv_mast_uid": 47291,
-      "item_id": "FTG-BRASS-025",
-      "previous_product_group_id": "FT1C",
-      "new_product_group_id": "FT1D",
-      "success": true,
-      "locations_changed": [10, 20, 40],
-      "error": null
-    },
-    {
-      "inv_mast_uid": 15623,
-      "item_id": "FTG-SS-050",
-      "previous_product_group_id": "FT1C",
-      "new_product_group_id": "FT1D",
-      "success": true,
-      "locations_changed": [10, 20],
-      "error": null
-    },
-    {
-      "inv_mast_uid": 60482,
-      "item_id": "VLV-BALL-100",
-      "previous_product_group_id": "VL4D",
-      "new_product_group_id": "VL4E",
-      "success": true,
-      "locations_changed": [10, 20],
-      "error": null
-    },
-    {
-      "inv_mast_uid": 22156,
-      "item_id": "VLV-CHECK-075",
-      "previous_product_group_id": "VL4D",
-      "new_product_group_id": "VL4E",
-      "success": true,
-      "locations_changed": [10, 20, 30],
-      "error": null
-    }
+  "inv_mast_uid": 35923,
+  "item_id": "GBY",
+  "previous_product_group_id": "SU5S",
+  "new_product_group_id": "SU5B",
+  "locations_changed": [
+    10,
+    19,
+    20,
+    30,
+    40,
+    50
   ]
 }

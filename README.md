@@ -1,15 +1,15 @@
 # Product Group Changer
 
-JSON API for bulk product group changes in P21 inventory items.
+JSON API for changing product groups in P21 inventory items.
 
 ## Overview
 
-This API allows you to change product groups for multiple inventory items in a single request. It uses an **optimistic locking pattern** - you must assert the expected current product group for each item, and the API will only proceed if all assertions match.
+This API changes the product group for a single inventory item. It uses **optimistic locking** - you must assert the expected current product group, and the API will only proceed if it matches.
 
 **Key Points:**
 - Product groups in P21 are stored **per-location** in `inv_loc`, not on `inv_mast`
 - All locations for an item must have the expected product group for validation to pass
-- Changes are applied to ALL locations for each item
+- Changes are applied to ALL locations for the item
 - Uses P21 Interactive API for reliable updates with full business logic
 
 ## Setup
@@ -19,7 +19,7 @@ This API allows you to change product groups for multiple inventory items in a s
 ```powershell
 # Create virtual environment
 python -m venv .venv
-.venv\Scripts\activate
+.venv\Scriptsctivate
 
 # Install dependencies
 pip install -e .
@@ -68,117 +68,83 @@ Content-Type: application/json
 
 ### Request Format
 
-Each item specifies:
-- `inv_mast_uid` - The inventory master UID
-- `expected_product_group_id` - What you expect the current product group to be (for validation)
-- `desired_product_group_id` - What you want to change it to
-
 ```json
 {
-  "items": [
-    {
-      "inv_mast_uid": 35923,
-      "expected_product_group_id": "SU5S",
-      "desired_product_group_id": "SU5B"
-    },
-    {
-      "inv_mast_uid": 41502,
-      "expected_product_group_id": "SU5S",
-      "desired_product_group_id": "SU5B"
-    }
-  ]
+  "inv_mast_uid": 35923,
+  "expected_product_group_id": "SU5S",
+  "desired_product_group_id": "SU5B"
 }
 ```
+
+| Field | Description |
+|-------|-------------|
+| `inv_mast_uid` | Inventory master UID |
+| `expected_product_group_id` | Current product group you expect (optimistic lock) |
+| `desired_product_group_id` | Product group to change to |
 
 ### Response Codes
 
 | Code | Meaning | When |
 |------|---------|------|
-| 200 | Success | All items validated AND all locations updated |
-| 400 | Assertion Mismatch | Expected product group does not match actual (NO changes made) |
-| 403 | Partial Failure | Assertions passed but some updates failed during execution |
+| 200 | Success | Update completed successfully |
+| 400 | Bad Request | Item not found, no locations, invalid input |
+| 409 | Conflict | Expected product group doesn't match actual (concurrency) |
+| 500 | Server Error | Update failed (P21 error, record locked, etc.) |
 
 ### Example: Success (200)
 
-All items changed successfully:
-
 ```json
 {
-  "total_changed": 2,
-  "results": [
-    {
-      "inv_mast_uid": 35923,
-      "item_id": "GBY",
-      "previous_product_group_id": "SU5S",
-      "new_product_group_id": "SU5B",
-      "success": true,
-      "locations_changed": [10, 19, 20, 30, 40, 50],
-      "error": null
-    }
-  ]
+  "inv_mast_uid": 35923,
+  "item_id": "GBY",
+  "previous_product_group_id": "SU5S",
+  "new_product_group_id": "SU5B",
+  "locations_changed": [10, 19, 20, 30, 40, 50]
 }
 ```
 
-### Example: Assertion Mismatch (400)
+### Example: Concurrency Conflict (409)
 
-Validation failed - no changes were made:
+Expected product group doesn't match - someone else changed it:
 
 ```json
 {
-  "error": "Product group mismatch",
-  "mismatches": [
-    {
-      "inv_mast_uid": 35923,
-      "expected_product_group_id": "SU5S",
-      "actual_product_group_id": "SU5B",
-      "item_id": "GBY",
-      "location_id": 10
-    }
-  ]
+  "error": "Concurrency conflict",
+  "detail": "Expected 'SU5S' but found 'SU5B'"
 }
 ```
 
-### Example: Partial Failure (403)
+### Example: Bad Request (400)
 
-Some items updated, others failed:
+Item not found or has no locations:
 
 ```json
 {
-  "error": "Some updates failed",
-  "total_requested": 10,
-  "successful": 7,
-  "failed": 3,
-  "results": [
-    {
-      "inv_mast_uid": 35923,
-      "item_id": "GBY",
-      "previous_product_group_id": "SU5S",
-      "new_product_group_id": "SU5B",
-      "success": true,
-      "locations_changed": [10, 19, 20, 30, 40, 50],
-      "error": null
-    },
-    {
-      "inv_mast_uid": 28741,
-      "item_id": "HYD-PUMP-4500",
-      "previous_product_group_id": "HY3A",
-      "new_product_group_id": "HY3B",
-      "success": false,
-      "locations_changed": [10, 20],
-      "error": "Location 30: Record locked by another user"
-    }
-  ]
+  "error": "Bad request",
+  "detail": "Item not found"
+}
+```
+
+### Example: Server Error (500)
+
+Update failed during execution:
+
+```json
+{
+  "error": "Update failed",
+  "detail": "Location 30: Record locked by another user"
 }
 ```
 
 ## Example Files
 
-See `data/` folder for complete example payloads:
+See `data/` folder for example payloads:
 
-- `example-request.json` - Sample request with 10 items
-- `example-response-200-success.json` - All succeeded
-- `example-response-400-assertion-mismatch.json` - Validation failed
-- `example-response-403-partial-failure.json` - Some failed
+- `example-request.json` - Sample request
+- `example-response-200-success.json` - Success response
+- `example-response-400-bad-request.json` - Bad request
+- `example-response-409-concurrency.json` - Concurrency conflict
+- `example-response-500-server-error.json` - Server error
 
 ## Testing with curl
 
@@ -190,9 +156,7 @@ Invoke-RestMethod -Uri "http://localhost:8000/api/change-product-group" -Method 
 
 ```bash
 # Linux/Git Bash
-curl -X POST http://localhost:8000/api/change-product-group \
-  -H "Content-Type: application/json" \
-  -d @data/example-request.json
+curl -X POST http://localhost:8000/api/change-product-group   -H "Content-Type: application/json"   -d @data/example-request.json
 ```
 
 ## Technical Details

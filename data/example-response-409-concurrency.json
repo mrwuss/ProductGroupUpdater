@@ -1,0 +1,4 @@
+{
+  "error": "Concurrency conflict",
+  "detail": "Expected 'SU5S' but found 'SU5B'"
+}

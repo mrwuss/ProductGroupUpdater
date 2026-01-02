@@ -1,0 +1,4 @@
+{
+  "error": "Update failed",
+  "detail": "Location 30: Record locked by another user"
+}
