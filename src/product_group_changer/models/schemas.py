@@ -21,6 +21,9 @@ class ChangeProductGroupRequest(BaseModel):
         ..., description="Expected current product group (for optimistic lock)"
     )
     desired_product_group_id: str = Field(..., description="Desired new product group")
+    bypassConcurrency: bool = Field(
+        default=False, description="Skip concurrency check and force update all locations"
+    )
 
 
 # Response schemas

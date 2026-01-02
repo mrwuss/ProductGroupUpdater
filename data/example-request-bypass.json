@@ -1,0 +1,6 @@
+{
+  "inv_mast_uid": 35923,
+  "expected_product_group_id": "SU5S",
+  "desired_product_group_id": "SU5B",
+  "bypassConcurrency": true
+}

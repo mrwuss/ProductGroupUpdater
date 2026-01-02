@@ -52,35 +52,45 @@ async def change_product_group(
         )
 
         if not validation.valid:
-            # Determine if 400 (bad request) or 409 (concurrency)
-            if validation.actual_product_group_id is not None:
-                # Mismatch = concurrency conflict
-                # Extract location from error message
-                location_info = validation.error.split('location ')[-1] if validation.error else 'unknown'
-                return JSONResponse(
-                    status_code=409,
-                    content=ErrorResponse(
-                        error="Concurrency conflict",
-                        detail=f"Location {location_info}: expected '{request.expected_product_group_id}' but found '{validation.actual_product_group_id}'",
-                    ).model_dump(),
-                )
+            # Check if bypass is enabled
+            if request.bypassConcurrency and validation.actual_product_group_id is not None:
+                # Bypass enabled - get locations and proceed anyway
+                locations = await service.get_item_locations(request.inv_mast_uid)
+                item = await service.get_item_by_uid(request.inv_mast_uid)
+                item_id = item.get("item_id", "") if item else ""
             else:
-                # Item not found or no locations = bad request
-                return JSONResponse(
-                    status_code=400,
-                    content=ErrorResponse(
-                        error="Bad request",
-                        detail=validation.error,
-                    ).model_dump(),
-                )
+                # No bypass - return error
+                if validation.actual_product_group_id is not None:
+                    # Mismatch = concurrency conflict
+                    location_info = validation.error.split('location ')[-1] if validation.error else 'unknown'
+                    return JSONResponse(
+                        status_code=409,
+                        content=ErrorResponse(
+                            error="Concurrency conflict",
+                            detail=f"Location {location_info}: expected '{request.expected_product_group_id}' but found '{validation.actual_product_group_id}'",
+                        ).model_dump(),
+                    )
+                else:
+                    # Item not found or no locations = bad request
+                    return JSONResponse(
+                        status_code=400,
+                        content=ErrorResponse(
+                            error="Bad request",
+                            detail=validation.error,
+                        ).model_dump(),
+                    )
+        else:
+            # Validation passed
+            locations = validation.locations or []
+            item_id = validation.item_id or ""
 
         # Execute the change
         result = await service.change_product_group(
             inv_mast_uid=request.inv_mast_uid,
-            item_id=validation.item_id or "",
+            item_id=item_id,
             previous_product_group_id=request.expected_product_group_id,
             desired_product_group_id=request.desired_product_group_id,
-            locations=validation.locations or [],
+            locations=locations,
         )
 
         if not result.success:
