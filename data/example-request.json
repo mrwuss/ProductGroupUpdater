@@ -1,0 +1,14 @@
+{
+  "items": [
+    {"inv_mast_uid": 35923, "expected_product_group_id": "SU5S", "desired_product_group_id": "SU5B"},
+    {"inv_mast_uid": 41502, "expected_product_group_id": "SU5S", "desired_product_group_id": "SU5B"},
+    {"inv_mast_uid": 28741, "expected_product_group_id": "HY3A", "desired_product_group_id": "HY3B"},
+    {"inv_mast_uid": 19384, "expected_product_group_id": "HY3A", "desired_product_group_id": "HY3B"},
+    {"inv_mast_uid": 52109, "expected_product_group_id": "PN2B", "desired_product_group_id": "PN2C"},
+    {"inv_mast_uid": 33847, "expected_product_group_id": "PN2B", "desired_product_group_id": "PN2C"},
+    {"inv_mast_uid": 47291, "expected_product_group_id": "FT1C", "desired_product_group_id": "FT1D"},
+    {"inv_mast_uid": 15623, "expected_product_group_id": "FT1C", "desired_product_group_id": "FT1D"},
+    {"inv_mast_uid": 60482, "expected_product_group_id": "VL4D", "desired_product_group_id": "VL4E"},
+    {"inv_mast_uid": 22156, "expected_product_group_id": "VL4D", "desired_product_group_id": "VL4E"}
+  ]
+}

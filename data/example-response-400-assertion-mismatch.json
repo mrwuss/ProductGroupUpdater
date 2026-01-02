@@ -1,0 +1,33 @@
+{
+  "error": "Product group mismatch",
+  "mismatches": [
+    {
+      "inv_mast_uid": 28741,
+      "expected_product_group_id": "HY3A",
+      "actual_product_group_id": "HY3B",
+      "item_id": "HYD-PUMP-4500",
+      "location_id": 10
+    },
+    {
+      "inv_mast_uid": 28741,
+      "expected_product_group_id": "HY3A",
+      "actual_product_group_id": "HY3B",
+      "item_id": "HYD-PUMP-4500",
+      "location_id": 20
+    },
+    {
+      "inv_mast_uid": 52109,
+      "expected_product_group_id": "PN2B",
+      "actual_product_group_id": "PN2A",
+      "item_id": "PNEU-CYL-250",
+      "location_id": 10
+    },
+    {
+      "inv_mast_uid": 60482,
+      "expected_product_group_id": "VL4D",
+      "actual_product_group_id": "ITEM_NOT_FOUND",
+      "item_id": null,
+      "location_id": null
+    }
+  ]
+}
