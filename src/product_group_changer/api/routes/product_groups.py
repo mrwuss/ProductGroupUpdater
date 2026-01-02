@@ -55,11 +55,13 @@ async def change_product_group(
             # Determine if 400 (bad request) or 409 (concurrency)
             if validation.actual_product_group_id is not None:
                 # Mismatch = concurrency conflict
+                # Extract location from error message
+                location_info = validation.error.split('location ')[-1] if validation.error else 'unknown'
                 return JSONResponse(
                     status_code=409,
                     content=ErrorResponse(
                         error="Concurrency conflict",
-                        detail=f"Expected '{request.expected_product_group_id}' but found '{validation.actual_product_group_id}'",
+                        detail=f"Location {location_info}: expected '{request.expected_product_group_id}' but found '{validation.actual_product_group_id}'",
                     ).model_dump(),
                 )
             else:
